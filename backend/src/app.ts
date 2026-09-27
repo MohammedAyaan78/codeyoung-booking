@@ -1,7 +1,5 @@
 import 'dotenv/config';
 import express from 'express';
-import path from 'path';
-import fs from 'fs';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -36,7 +34,7 @@ export function createApp() {
       origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
       methods: ['GET', 'POST', 'PATCH', 'DELETE'],
       allowedHeaders: ['Content-Type', 'Idempotency-Key'],
-      credentials: true, // required for cookies
+      credentials: true,
     })
   );
 
@@ -111,13 +109,6 @@ export function createApp() {
   app.use('/api/parent', parentRouter);
   app.use('/api/mentor', mentorRouter);
   app.use('/api/classes', classesRouter);
-
-  // ── Serve frontend (production) ──────────────────────────────────────────
-  const frontendDist = path.join(__dirname, '../../frontend/dist');
-  if (fs.existsSync(frontendDist)) {
-    app.use(express.static(frontendDist));
-    app.get('*', (_req, res) => res.sendFile(path.join(frontendDist, 'index.html')));
-  }
 
   // ── Error handler ─────────────────────────────────────────────────────────
   app.use(errorHandler);
