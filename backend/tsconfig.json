@@ -7,12 +7,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "rootDirs": ["src", "../shared/src"],
-    "resolveJsonModule": true,
-    "paths": {
-      "@codeyoung/shared": ["../shared/src"]
-    }
+    "rootDir": "src",
+    "resolveJsonModule": true
   },
-  "include": ["src", "../shared/src"],
+  "include": ["src"],
   "exclude": ["node_modules", "dist"]
 }
