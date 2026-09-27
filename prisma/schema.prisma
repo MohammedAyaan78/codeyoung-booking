@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Mentor {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  timezone     String
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  passwordHash String?
+  role         Role      @default(MENTOR)
+  bookings     Booking[]
+
+  @@index([active])
+}
+
+model Parent {
+  id              String    @id @default(cuid())
+  name            String
+  email           String    @unique
+  phone           String    @default("")
+  timezone        String    @default("UTC")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  googleId        String?   @unique
+  profileImageUrl String?
+  passwordHash    String?   // bcrypt hash — null for Google-only accounts
+  role            Role      @default(PARENT)
+  bookings        Booking[]
+
+  @@index([email])
+  @@index([googleId])
+}
+
+model Booking {
+  id             String        @id @default(cuid())
+  parentId       String
+  mentorId       String
+  startsAtUtc    DateTime
+  endsAtUtc      DateTime
+  parentTimezone String
+  mentorTimezone String
+  status         BookingStatus @default(CONFIRMED)
+  meetingUrl     String
+  idempotencyKey String        @unique
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  mentor         Mentor        @relation(fields: [mentorId], references: [id])
+  parent         Parent        @relation(fields: [parentId], references: [id])
+
+  @@index([mentorId])
+  @@index([parentId])
+  @@index([startsAtUtc])
+  @@index([status])
+  @@index([mentorId, startsAtUtc, status])
+}
+
+enum Role {
+  PARENT
+  MENTOR
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+}

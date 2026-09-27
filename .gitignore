@@ -1,0 +1,26 @@
+# Environment — never commit real credentials
+.env
+.env.test
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Logs
+*.log
+*.log.*
+backend-log.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# IDE
+.vscode/
+.idea/
