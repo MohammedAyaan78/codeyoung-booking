@@ -10,6 +10,7 @@ import { api } from '@/services/api';
 import { useAuth } from '@/hooks/useAuth';
 import { Alert } from '@/components/ui/Alert';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { CYLogo } from '@/components/ui/CYLogo';
 
 const schema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -62,9 +63,7 @@ export function ParentProfilePage() {
             <ArrowLeft className="w-5 h-5 text-stone-600" />
           </Link>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-brand-500 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xs">CY</span>
-            </div>
+            <CYLogo className="w-7 h-7" />
             <span className="font-bold text-stone-800">Your Profile</span>
           </div>
         </div>

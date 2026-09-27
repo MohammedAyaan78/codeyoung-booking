@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/services/api';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Alert } from '@/components/ui/Alert';
+import { CYLogo } from '@/components/ui/CYLogo';
 
 function NavBar() {
   const { user, logout } = useAuth();
@@ -21,9 +22,7 @@ function NavBar() {
     <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-stone-100">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">CY</span>
-          </div>
+          <CYLogo className="w-8 h-8" />
           <span className="font-bold text-stone-800 text-lg">CodeYoung</span>
         </Link>
         <div className="flex items-center gap-2">
