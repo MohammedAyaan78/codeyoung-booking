@@ -14,7 +14,6 @@
   "dependencies": {
     "@codeyoung/shared": "*",
     "@prisma/client": "^5.22.0",
-    "@types/nodemailer": "^8.0.2",
     "bcryptjs": "^3.0.3",
     "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.5",

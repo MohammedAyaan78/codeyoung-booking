@@ -1,6 +1,6 @@
-import nodemailer from 'nodemailer';
+import nodemailer, { type Transporter } from 'nodemailer';
 
-let transporter: nodemailer.Transporter | null = null;
+let transporter: Transporter | null = null;
 
 /**
  * Get or create a nodemailer transporter.
@@ -8,7 +8,7 @@ let transporter: nodemailer.Transporter | null = null;
  * - Otherwise creates an Ethereal test account automatically.
  *   Emails are captured at https://ethereal.email — preview URL logged to console.
  */
-async function getTransporter(): Promise<nodemailer.Transporter> {
+async function getTransporter(): Promise<Transporter> {
   if (transporter) return transporter;
 
   if (process.env.SMTP_HOST) {
