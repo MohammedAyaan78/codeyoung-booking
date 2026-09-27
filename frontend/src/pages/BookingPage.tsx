@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
+import { CYLogo } from '@/components/ui/CYLogo';
 import { SlotDto, TimezoneOption } from '@codeyoung/shared';
 
 import { api } from '@/services/api';
@@ -153,9 +154,7 @@ export function BookingPage() {
             <ArrowLeft className="w-5 h-5 text-stone-600" />
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-brand-500 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xs">CY</span>
-            </div>
+            <CYLogo className="w-7 h-7" />
             <span className="font-bold text-stone-800">Book a Trial Class</span>
           </div>
         </div>

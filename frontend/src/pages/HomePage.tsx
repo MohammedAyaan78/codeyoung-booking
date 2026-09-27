@@ -2,6 +2,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
 import { Calendar, Clock, Globe, ArrowRight, CheckCircle, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { CYLogo } from '@/components/ui/CYLogo';
 
 // ── Floating hero card ────────────────────────────────────────────────────────
 
@@ -162,9 +163,7 @@ export function HomePage() {
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-stone-100">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">CY</span>
-            </div>
+            <CYLogo className="w-8 h-8" />
             <span className="font-bold text-stone-800 text-lg">CodeYoung</span>
           </div>
           <div className="flex items-center gap-3">

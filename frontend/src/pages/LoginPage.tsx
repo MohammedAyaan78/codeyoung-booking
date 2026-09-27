@@ -8,6 +8,7 @@ import { ArrowLeft, Mail, Lock, User, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/services/api';
 import { Alert } from '@/components/ui/Alert';
+import { CYLogo } from '@/components/ui/CYLogo';
 
 // ── Google icon ───────────────────────────────────────────────────────────────
 
@@ -372,9 +373,7 @@ export function LoginPage({ defaultTab = 'parent' }: LoginPageProps) {
             <ArrowLeft className="w-5 h-5 text-stone-600" />
           </Link>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-brand-500 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xs">CY</span>
-            </div>
+            <CYLogo className="w-7 h-7" />
             <span className="font-bold text-stone-800">CodeYoung</span>
           </div>
         </div>
