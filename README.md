@@ -16,6 +16,8 @@ A production-quality appointment booking application for trial coding classes. P
 - **Role-based access control** — backend-enforced, parents and mentors see only their own data
 - **Parent dashboard** — upcoming/past bookings, profile management
 - **Mentor dashboard** — assigned classes, daily capacity indicator
+- **Confirmation emails** — polished HTML emails to parent and mentor after booking, with correct timezone representations for each recipient
+- **Email failure resilience** — booking is never rolled back due to email delivery failure
 - **Polished UX** — 3-step booking flow, skeleton loading, error states with alternatives
 - **Animated hero** — CSS/DOM floating card composition (no heavy 3D dependency)
 - **Accessible** — keyboard navigation, ARIA labels, focus states, reduced-motion support
@@ -34,6 +36,8 @@ MentorAssignmentService (eligibility: conflict + daily limit in mentor's timezon
 Prisma Transaction      (Serializable isolation + FOR UPDATE lock on mentors)
     ↓
 PostgreSQL
+    ↓  (after commit)
+EmailService            (parent + mentor confirmation emails, fire-and-forget)
 ```
 
 Auth layer wraps around the booking system:
@@ -64,6 +68,7 @@ requireAuth + requireRole middleware
 | Auth (parents)  | Google OAuth 2.0 via Passport.js                |
 | Auth (mentors)  | Email + password (bcrypt) via Passport.js       |
 | Sessions        | express-session with HTTP-only cookies          |
+| Email           | Nodemailer (Ethereal auto-fallback in dev, SMTP in prod) |
 | Testing         | Jest + ts-jest + Supertest                      |
 
 ---
@@ -99,7 +104,7 @@ requireAuth + requireRole middleware
 │   └── seed.ts         10 deterministic demo mentors with hashed passwords
 │
 ├── tests/
-│   ├── unit/           timezone.test.ts
+│   ├── unit/           timezone.test.ts, email.test.ts
 │   └── integration/    booking.test.ts, api.test.ts, auth.test.ts
 │
 ├── docker-compose.yml
@@ -146,6 +151,12 @@ cp .env.example .env
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret           | *(required for parent Google login)*                 |
 | `GOOGLE_CALLBACK_URL`  | OAuth redirect URI                   | `http://localhost:4000/api/auth/google/callback`     |
 | `JOIN_WINDOW_BEFORE_MINUTES` | Minutes before class start when Join becomes active | `10`                          |
+| `APP_BASE_URL`         | Frontend base URL for classroom links in emails | `http://localhost:5173`          |
+| `SMTP_HOST`            | SMTP server host (optional — Ethereal used if absent) | —                          |
+| `SMTP_PORT`            | SMTP port                            | `587`                                                |
+| `SMTP_USER`            | SMTP username / API key              | —                                                    |
+| `SMTP_PASS`            | SMTP password / API key              | —                                                    |
+| `EMAIL_FROM`           | From address for outgoing emails     | `"CodeYoung" <noreply@codeyoung.demo>`               |
 
 ---
 
@@ -223,6 +234,41 @@ All protected routes enforce authorization on the **backend** — frontend route
 - **Rate limiting** — mentor login: 10 req/min; booking endpoint: 20 req/min.
 - **No secrets in source** — all credentials via environment variables.
 - **Safe error responses** — `passwordHash` and OAuth tokens are never returned in API responses.
+
+---
+
+## Email Configuration
+
+CodeYoung includes real Gmail SMTP email integration using **Nodemailer** for automated confirmation notifications sent to both parents and mentors upon trial class booking.
+
+### Gmail SMTP Setup
+1. Enable **Google 2-Step Verification** on your Google Account.
+2. Generate a 16-character **Google App Password** at `https://myaccount.google.com/apppasswords`.
+3. Set the following environment variables in your `.env` file:
+
+```env
+EMAIL_ENABLED=true
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=yourgmail@gmail.com
+SMTP_PASS=your-google-app-password
+EMAIL_FROM="Codeyoung <yourgmail@gmail.com>"
+APP_BASE_URL=http://localhost:5173
+```
+
+### Key Email Features & Architecture
+- **Dual Confirmation Emails**:
+  - **Parent Email**: Contains mentor name, appointment date/time in parent's local timezone, classroom URL, and booking ID.
+  - **Mentor Email**: Contains parent name, appointment date/time in mentor's local timezone, classroom URL, and booking ID.
+- **Timezone Correctness**: Parent and mentor dates/times represent the exact same UTC instant formatted per recipient IANA timezone. Date crossovers (e.g., Oct 1 EDT vs Oct 2 IST) are fully supported.
+- **Non-blocking Failure Resilience**: Booking creation occurs in a database transaction first. Confirmation emails are sent after commit. Email failures do **not** roll back valid bookings.
+- **Duplicate Prevention**: Email delivery status is tracked (`parentEmailStatus`, `mentorEmailStatus`). Idempotent booking replays will not resend duplicate emails.
+- **Diagnostic CLI Command**: Test real Gmail SMTP connection and dispatch safely without exposing credentials:
+  ```bash
+  cd backend
+  npx ts-node src/scripts/test-smtp.ts
+  ```
 
 ---
 
@@ -306,6 +352,7 @@ npm test
 
 Tests include:
 - `timezone.test.ts` — 13 unit tests for DST, midnight crossover, formatting
+- `email.test.ts` — email delivery resilience, timezone correctness, date crossover, DST, classroom URL, idempotency
 - `booking.test.ts` — booking service: success, past slot, idempotency, daily limit, concurrency
 - `api.test.ts` — HTTP layer: validation, status codes, response shapes
 - `auth.test.ts` — RBAC: unauthenticated access, mentor auth, role enforcement
@@ -511,10 +558,95 @@ This is a **demo classroom** — not a production video conferencing system. The
 
 ---
 
+## Email Notifications
+
+After a booking is successfully committed to the database, the system sends confirmation emails to both the parent and the assigned mentor.
+
+**The booking is committed independently of email delivery. Email failure does not cancel a successful booking.**
+
+### What is sent
+
+- **Parent confirmation email** — subject: *Your Codeyoung Trial Class is Confirmed 🎉*
+  - Mentor name, booking ID
+  - Parent's local date and time (correct IANA timezone, DST-aware)
+  - Mentor's local date and time (correct IANA timezone, DST-aware)
+  - Duration
+  - Join Trial Class button linking to `/class/:bookingId`
+  - Plain-text fallback
+
+- **Mentor notification email** — subject: *New Codeyoung Trial Class Assigned*
+  - Parent name, booking ID
+  - Mentor's local date and time
+  - Parent's local date and time
+  - Join Trial Class button
+  - Plain-text fallback
+
+### When emails are sent
+
+Emails are triggered immediately after the booking transaction commits, outside the transaction. They are sent asynchronously but awaited before the API response is returned, so the response includes delivery status.
+
+### Email provider
+
+The system uses **Nodemailer**.
+
+- **Development (default):** If `SMTP_HOST` is not configured, an [Ethereal](https://ethereal.email) test account is created automatically. Emails are captured — not delivered to real inboxes. Preview URLs are logged to the backend console.
+- **Production:** Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` to use any SMTP provider (SendGrid, Brevo, SES, etc.).
+
+### Environment variables
+
+```
+APP_BASE_URL=http://localhost:5173        # Base URL for classroom links in emails
+SMTP_HOST=smtp.sendgrid.net              # Optional — Ethereal used if absent
+SMTP_PORT=587
+SMTP_USER=apikey
+SMTP_PASS=your-api-key
+EMAIL_FROM="CodeYoung" <noreply@yourdomain.com>
+```
+
+### Development behaviour
+
+With no SMTP configuration:
+1. Start the backend — Ethereal account is created automatically on first email send.
+2. Complete a booking.
+3. Backend logs: `[EMAIL] SENT recipient=parent bookingId=... preview=https://ethereal.email/message/...`
+4. Open the preview URL to inspect the rendered email.
+
+No real emails are sent. No configuration is required.
+
+### Failure behaviour
+
+If the email provider is unavailable:
+- The booking remains `CONFIRMED` in the database.
+- `parentEmailStatus` / `mentorEmailStatus` are set to `FAILED` on the booking record.
+- The API response includes `emailNotifications: { parent: "FAILED", mentor: "FAILED" }`.
+- The confirmation screen shows: *"Booking confirmed — confirmation email could not be sent right now."*
+- The user can still access the classroom and dashboard normally.
+
+### Email idempotency
+
+- Idempotent booking replays (same `Idempotency-Key`) return the original booking without re-sending emails.
+- The `parentEmailStatus` / `mentorEmailStatus` fields on the `Booking` record track whether each email was delivered.
+- A `SENT` email is not re-sent on replay.
+
+### Timezone handling in emails
+
+The same UTC instant stored in the database is independently converted to:
+- The parent's IANA timezone (e.g. `America/New_York`)
+- The mentor's IANA timezone (e.g. `Asia/Kolkata`)
+
+Using Luxon: `DateTime.fromISO(utcIso, { zone: 'utc' }).setZone(ianaZone)`
+
+DST is handled automatically. Date crossover is handled correctly — a booking at 23:30 New York time (Oct 1) correctly shows October 2 in the mentor's India timezone.
+
+### Classroom link
+
+The Join Trial Class button links to `APP_BASE_URL/class/:bookingId`. The classroom route requires authentication — the link alone does not grant access. The backend verifies session identity and booking ownership on every classroom request.
+
+---
+
 ## Future Improvements
 
 - Per-mentor availability schedules and working hours.
-- Email confirmation via SendGrid/SES.
 - Cancellation and rescheduling.
 - Admin dashboard.
 - Real video conferencing (Zoom / Google Meet API).
@@ -522,6 +654,7 @@ This is a **demo classroom** — not a production video conferencing system. The
 - Playwright end-to-end tests for the full booking flow.
 - Redis-based rate limiting for production scale.
 - Password reset flow for mentors.
+- Email retry endpoint (`POST /api/bookings/:id/resend-confirmation`).
 
 ---
 

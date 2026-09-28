@@ -16,6 +16,17 @@ import { PrismaClient, BookingStatus } from '@prisma/client';
 import { bookingService } from '../../backend/src/services/booking.service';
 import { CreateBookingInput } from '../../backend/src/validators/booking.validator';
 
+jest.mock('../../backend/src/utils/email', () => {
+  const original = jest.requireActual('../../backend/src/utils/email');
+  return {
+    ...original,
+    sendBookingConfirmationEmails: jest.fn().mockResolvedValue({
+      parent: 'SENT',
+      mentor: 'SENT',
+    }),
+  };
+});
+
 const prisma = new PrismaClient();
 
 // ── Test helpers ──────────────────────────────────────────────────────────────

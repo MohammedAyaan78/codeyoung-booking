@@ -3,8 +3,9 @@
   "testEnvironment": "node",
   "roots": ["<rootDir>/src", "<rootDir>/../tests"],
   "moduleNameMapper": {
-    "@codeyoung/shared": "<rootDir>/../shared/src/index.ts"
+    "^@codeyoung/shared$": "<rootDir>/../shared/src/index.ts"
   },
+  "moduleDirectories": ["node_modules", "<rootDir>/node_modules", "<rootDir>/../node_modules"],
   "testMatch": ["**/*.test.ts"],
   "collectCoverageFrom": ["src/**/*.ts"]
 }

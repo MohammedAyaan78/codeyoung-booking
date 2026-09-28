@@ -13,11 +13,26 @@
  *   - DST-sensitive booking remains correct
  */
 
+import dotenv from 'dotenv';
+import path from 'path';
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
 import request from 'supertest';
 import { createApp } from '../../backend/src/app';
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { DateTime } from 'luxon';
+
+jest.mock('../../backend/src/utils/email', () => {
+  const original = jest.requireActual('../../backend/src/utils/email');
+  return {
+    ...original,
+    sendBookingConfirmationEmails: jest.fn().mockResolvedValue({
+      parent: 'SENT',
+      mentor: 'SENT',
+    }),
+  };
+});
 
 const app = createApp();
 const prisma = new PrismaClient();

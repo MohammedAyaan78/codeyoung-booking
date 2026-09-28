@@ -1,6 +1,6 @@
 import { DateTime } from 'luxon';
 import { v4 as uuidv4 } from 'uuid';
-import { BookingConfirmation, SlotDto } from '@codeyoung/shared';
+import { BookingConfirmation, SlotDto, EmailNotificationStatus } from '@codeyoung/shared';
 import { prisma } from '../utils/prisma';
 import { mentorAssignmentService } from './mentorAssignment.service';
 import { availabilityService } from './availability.service';
@@ -11,7 +11,23 @@ import {
   formatLocalDate,
 } from '../utils/timezone';
 import { CreateBookingInput } from '../validators/booking.validator';
-import { sendBookingEmails } from '../utils/email';
+import { sendBookingConfirmationEmails, buildClassroomUrl } from '../utils/email';
+
+// Augmented booking type that includes relations and email status fields
+// (email status fields are added by migration; Prisma client types update after `prisma generate`)
+type BookingWithRelations = {
+  id: string;
+  startsAtUtc: Date;
+  endsAtUtc: Date;
+  parentTimezone: string;
+  mentorTimezone: string;
+  meetingUrl: string;
+  status: string;
+  parentEmailStatus?: string;
+  mentorEmailStatus?: string;
+  mentor: { name: string; email: string; timezone: string };
+  parent: { name: string; email: string };
+};
 
 function createMeetingUrl(): string {
   return `https://demo.codeyoung.local/class/${uuidv4()}`;
@@ -27,7 +43,9 @@ function createMeetingUrl(): string {
  *      a. Upsert parent
  *      b. Lock mentors + assign eligible mentor
  *      c. Create booking
- *   4. Return confirmation DTO
+ *   4. Send confirmation emails (outside transaction — never fails the booking)
+ *   5. Persist email delivery status
+ *   6. Return confirmation DTO
  */
 export class BookingService {
   async createBooking(
@@ -41,7 +59,12 @@ export class BookingService {
     });
 
     if (existing) {
-      return this.toConfirmation(existing, existing.mentor, existing.parent.name);
+      // Return the original confirmation — do NOT resend emails
+      const b = existing as unknown as BookingWithRelations;
+      return this.toConfirmation(b, b.mentor, b.parent.name, {
+        parent: (b.parentEmailStatus ?? 'PENDING') as EmailNotificationStatus,
+        mentor: (b.mentorEmailStatus ?? 'PENDING') as EmailNotificationStatus,
+      });
     }
 
     // ── 2. Parse and validate the requested UTC instant ───────────────────────
@@ -58,9 +81,8 @@ export class BookingService {
     }
 
     // ── 3. Atomic booking transaction ─────────────────────────────────────────
-    const booking = await prisma.$transaction(
+    const rawBooking = await prisma.$transaction(
       async (tx) => {
-        // Upsert parent (email is the natural key)
         const parent = await tx.parent.upsert({
           where: { email: input.parentEmail },
           update: {
@@ -76,7 +98,6 @@ export class BookingService {
           },
         });
 
-        // Find and lock an eligible mentor
         const mentor = await mentorAssignmentService.findEligibleMentor(
           tx,
           startsAtUtc.toJSDate(),
@@ -84,7 +105,6 @@ export class BookingService {
         );
 
         if (!mentor) {
-          // Gather alternative slots to surface to the user
           const alternatives = await this.findAlternatives(
             startsAtUtc.toISO()!,
             input.parentTimezone
@@ -117,25 +137,49 @@ export class BookingService {
       }
     );
 
-    const confirmation = this.toConfirmation(booking, booking.mentor, booking.parent.name);
-    // Send real emails to parent and mentor (Ethereal test SMTP — preview URL logged to console)
-    sendBookingEmails({
-      parentName:      booking.parent.name,
-      parentEmail:     booking.parent.email,
-      mentorName:      booking.mentor.name,
-      mentorEmail:     booking.mentor.email,
-      parentLocalStart: confirmation.parent.localStart,
-      parentLocalEnd:   confirmation.parent.localEnd,
-      parentTimezone:   confirmation.parent.timezone,
-      parentLocalDate:  confirmation.parent.localDate,
-      mentorLocalStart: confirmation.mentor.localStart,
-      mentorLocalEnd:   confirmation.mentor.localEnd,
-      mentorTimezone:   confirmation.mentor.timezone,
-      mentorLocalDate:  confirmation.mentor.localDate,
-      meetingUrl:       confirmation.meetingUrl,
-      bookingId:        confirmation.bookingId,
-    }).catch(() => {}); // fire-and-forget — email failure never breaks booking
-    return confirmation;
+    const booking = rawBooking as unknown as BookingWithRelations;
+    console.log(`[BOOKING] CREATED bookingId=${booking.id}`);
+
+    // ── 4. Send confirmation emails (outside transaction) ─────────────────────
+    const classroomUrl = buildClassroomUrl(booking.id);
+    const startIso = booking.startsAtUtc.toISOString();
+    const endIso   = booking.endsAtUtc.toISOString();
+
+    const emailResult = await sendBookingConfirmationEmails({
+      bookingId:        booking.id,
+      parentName:       booking.parent.name,
+      parentEmail:      booking.parent.email,
+      mentorName:       booking.mentor.name,
+      mentorEmail:      booking.mentor.email,
+      parentLocalDate:  formatLocalDate(startIso, booking.parentTimezone),
+      parentLocalStart: formatLocalTime(startIso, booking.parentTimezone),
+      parentLocalEnd:   formatLocalTime(endIso,   booking.parentTimezone),
+      parentTimezone:   booking.parentTimezone,
+      mentorLocalDate:  formatLocalDate(startIso, booking.mentorTimezone),
+      mentorLocalStart: formatLocalTime(startIso, booking.mentorTimezone),
+      mentorLocalEnd:   formatLocalTime(endIso,   booking.mentorTimezone),
+      mentorTimezone:   booking.mentorTimezone,
+      classroomUrl,
+    });
+
+    // ── 5. Persist email delivery status ──────────────────────────────────────
+    const sentAt = new Date();
+    await prisma.booking
+      .update({
+        where: { id: booking.id },
+        data: {
+          parentEmailStatus: emailResult.parent,
+          mentorEmailStatus: emailResult.mentor,
+          parentEmailSentAt: emailResult.parent === 'SENT' ? sentAt : null,
+          mentorEmailSentAt: emailResult.mentor === 'SENT' ? sentAt : null,
+        },
+      })
+      .catch((err: unknown) => {
+        // Status update failure must never affect the booking response
+        console.error(`[EMAIL] Failed to persist email status bookingId=${booking.id}:`, err);
+      });
+
+    return this.toConfirmation(booking, booking.mentor, booking.parent.name, emailResult);
   }
 
   async getBooking(id: string): Promise<BookingConfirmation> {
@@ -148,21 +192,18 @@ export class BookingService {
       throw new AppError(404, 'NOT_FOUND', 'Booking not found.');
     }
 
-    return this.toConfirmation(booking, booking.mentor, booking.parent.name);
+    const b = booking as unknown as BookingWithRelations;
+    return this.toConfirmation(b, b.mentor, b.parent.name, {
+      parent: (b.parentEmailStatus ?? 'PENDING') as EmailNotificationStatus,
+      mentor: (b.mentorEmailStatus ?? 'PENDING') as EmailNotificationStatus,
+    });
   }
 
   private toConfirmation(
-    booking: {
-      id: string;
-      startsAtUtc: Date;
-      endsAtUtc: Date;
-      parentTimezone: string;
-      mentorTimezone: string;
-      meetingUrl: string;
-      status: string;
-    },
+    booking: BookingWithRelations,
     mentor: { name: string; timezone: string },
-    parentName: string
+    parentName: string,
+    emailNotifications?: { parent: EmailNotificationStatus; mentor: EmailNotificationStatus }
   ): BookingConfirmation {
     const startIso = booking.startsAtUtc.toISOString();
     const endIso   = booking.endsAtUtc.toISOString();
@@ -187,12 +228,10 @@ export class BookingService {
         localEnd:   formatLocalTime(endIso,   booking.mentorTimezone),
         localDate:  formatLocalDate(startIso, booking.mentorTimezone),
       },
+      ...(emailNotifications && { emailNotifications }),
     };
   }
 
-  /**
-   * Find up to 3 alternative available slots near the requested time.
-   */
   private async findAlternatives(startUtcIso: string, timezone: string): Promise<SlotDto[]> {
     try {
       const dt = DateTime.fromISO(startUtcIso, { zone: 'utc' }).setZone(timezone);

@@ -26,6 +26,8 @@ export interface CreateBookingRequest {
   parentPhone?: string;
 }
 
+export type EmailNotificationStatus = 'PENDING' | 'SENT' | 'FAILED';
+
 export interface BookingConfirmation {
   bookingId: string;
   status: 'CONFIRMED';
@@ -49,6 +51,12 @@ export interface BookingConfirmation {
 
   startUtc: string;
   endUtc: string;
+
+  /** Email delivery status — present after a new booking, may be absent on cached/fetched bookings */
+  emailNotifications?: {
+    parent: EmailNotificationStatus;
+    mentor: EmailNotificationStatus;
+  };
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────

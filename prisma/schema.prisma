@@ -41,20 +41,24 @@ model Parent {
 }
 
 model Booking {
-  id             String        @id @default(cuid())
-  parentId       String
-  mentorId       String
-  startsAtUtc    DateTime
-  endsAtUtc      DateTime
-  parentTimezone String
-  mentorTimezone String
-  status         BookingStatus @default(CONFIRMED)
-  meetingUrl     String
-  idempotencyKey String        @unique
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  mentor         Mentor        @relation(fields: [mentorId], references: [id])
-  parent         Parent        @relation(fields: [parentId], references: [id])
+  id                          String        @id @default(cuid())
+  parentId                    String
+  mentorId                    String
+  startsAtUtc                 DateTime
+  endsAtUtc                   DateTime
+  parentTimezone              String
+  mentorTimezone              String
+  status                      BookingStatus @default(CONFIRMED)
+  meetingUrl                  String
+  idempotencyKey              String        @unique
+  createdAt                   DateTime      @default(now())
+  updatedAt                   DateTime      @updatedAt
+  parentEmailStatus           EmailStatus   @default(PENDING)
+  mentorEmailStatus           EmailStatus   @default(PENDING)
+  parentEmailSentAt           DateTime?
+  mentorEmailSentAt           DateTime?
+  mentor                      Mentor        @relation(fields: [mentorId], references: [id])
+  parent                      Parent        @relation(fields: [parentId], references: [id])
 
   @@index([mentorId])
   @@index([parentId])
@@ -71,4 +75,10 @@ enum Role {
 enum BookingStatus {
   CONFIRMED
   CANCELLED
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
 }

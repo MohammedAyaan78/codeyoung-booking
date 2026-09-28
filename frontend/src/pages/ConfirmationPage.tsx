@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CheckCircle, Calendar, Clock, Globe, Video, Copy, ExternalLink, ArrowLeft } from 'lucide-react';
+import { CheckCircle, Calendar, Clock, Globe, Video, Copy, ExternalLink, ArrowLeft, Mail, AlertCircle } from 'lucide-react';
 import { BookingConfirmation } from '@codeyoung/shared';
 import { api } from '@/services/api';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -96,6 +96,22 @@ export function ConfirmationPage() {
           <p className="text-xs text-stone-400 mt-2 font-mono">
             Booking ID: {confirmation.bookingId}
           </p>
+          {/* Email notification status */}
+          {confirmation.emailNotifications && (
+            <div className="mt-3 inline-flex items-center gap-1.5 text-sm">
+              {confirmation.emailNotifications.parent === 'SENT' ? (
+                <>
+                  <Mail className="w-4 h-4 text-green-500" />
+                  <span className="text-green-700">Confirmation email sent</span>
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                  <span className="text-amber-700">Booking confirmed — confirmation email could not be sent right now</span>
+                </>
+              )}
+            </div>
+          )}
         </motion.div>
 
         {/* Details card */}
